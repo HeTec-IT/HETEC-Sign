@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#1B2430" />
+<title>HETEC Sign</title>
+<link rel="manifest" href="./tablet-app.webmanifest" />
+<style>
+  :root {
+    --ink-900: #1B2430;
+    --paper-50: #FAFAF8;
+    --paper-100: #F0EFEA;
+    --paper-200: #E3E1D9;
+    --slate-500: #5B6472;
+    --seal-600: #A32F1F;
+    --seal-700: #7E2417;
+    --confirm-600: #1F7A5C;
+    --warn-600: #B5791A;
+    --font-display: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "Cascadia Code", "SF Mono", Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; font-family: var(--font-display); background: var(--paper-50); color: var(--ink-900);
+    -webkit-font-smoothing: antialiased; overscroll-behavior: none;
+  }
+  #root { height: 100vh; }
+  .app-shell { height: 100vh; display: flex; flex-direction: column; }
+  .topbar { padding: 10px 20px; text-align: center; font-size: 13px; font-weight: 600; color: var(--slate-500); flex-shrink: 0; border-bottom: 1px solid var(--paper-200); }
+  .topbar em { font-style: normal; color: var(--seal-600); }
+  .app-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .full-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 32px; }
+  .eyebrow { font-family: var(--font-mono); font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--slate-500); margin: 0 0 4px; }
+  .eyebrow.warn { color: var(--warn-600); }
+  .full-center h1 { font-size: 26px; margin: 4px 0 10px; }
+  .muted { color: var(--slate-500); font-size: 16px; margin: 0 0 24px; max-width: 420px; }
+  button, .file-btn {
+    font-family: inherit; font-size: 17px; font-weight: 600; border-radius: 12px; padding: 18px 26px;
+    border: none; cursor: pointer; width: 100%; max-width: 420px; margin-top: 10px; position: relative;
+  }
+  button:disabled { background: var(--paper-200); color: var(--slate-500); cursor: not-allowed; }
+  button:focus-visible, .file-btn:focus-visible { outline: 3px solid var(--seal-600); outline-offset: 2px; }
+  .btn-primary { background: var(--seal-600); color: #fff; }
+  .btn-ghost { background: transparent; border: 1px solid var(--paper-200); color: var(--slate-500); }
+  .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .spinner-lg { width: 40px; height: 40px; border-radius: 50%; border: 4px solid var(--paper-200); border-top-color: var(--seal-600); animation: spin 800ms linear infinite; margin-bottom: 18px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .viewer-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .progress-hint { padding: 12px 20px; text-align: center; font-size: 14px; color: var(--slate-500); border-bottom: 1px solid var(--paper-200); flex-shrink: 0; }
+  .progress-hint .done { color: var(--confirm-600); font-weight: 600; }
+  .pdf-scroll { flex: 1; overflow-y: auto; padding: 16px; background: var(--paper-100); -webkit-overflow-scrolling: touch; min-height: 0; }
+  .pdf-page { display: block; margin: 0 auto 16px; background: #fff; box-shadow: 0 2px 10px rgba(27,36,48,0.12); border-radius: 4px; }
+  .viewer-footer { padding: 14px 20px calc(14px + env(safe-area-inset-bottom)); border-top: 1px solid var(--paper-200); background: var(--paper-50); flex-shrink: 0; }
+  .viewer-footer button { max-width: none; }
+
+  .signing { padding: 24px; }
+  .signature-pad { width: 100%; max-width: 520px; }
+  .signature-canvas { width: 100%; height: 220px; background: #fff; border: 2px dashed var(--paper-200); border-radius: 12px; touch-action: none; display: block; }
+  .sig-caption { text-align: center; color: var(--slate-500); font-size: 13px; margin: 10px 0 20px; }
+  .sig-actions { display: flex; gap: 10px; }
+  .sig-actions button { max-width: none; margin-top: 0; }
+
+  .check-mark svg { width: 64px; height: 64px; }
+  .check-mark path { fill: none; stroke: var(--confirm-600); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 100; stroke-dashoffset: 100; animation: draw-check 500ms ease forwards 150ms; }
+  @keyframes draw-check { to { stroke-dashoffset: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .spinner-lg, .check-mark path { animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-storage-compat.js"></script>
+
+<script>
+  // Bewusst alles klassisches Script (kein type="module"): ES-Module werden von
+  // Chrome/Edge blockiert, sobald die Datei per Doppelklick als file:// geöffnet
+  // wird - das war die Ursache für die leere Seite.
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  window.pdfjsLib = pdfjsLib;
+
+  // Muss dieselbe Firebase-Config wie pc-app/index.html verwenden.
+  var firebaseConfig = {
+    apiKey: "AIzaSyDJ8fgvP272oRJjSYDbwEY-OXB2Tm_YYzs",
+    authDomain: "pdf-sign-ee773.firebaseapp.com",
+    projectId: "pdf-sign-ee773",
+    storageBucket: "pdf-sign-ee773.firebasestorage.app",
+    messagingSenderId: "293099302536",
+    appId: "1:293099302536:web:f0021fdf99c2dab9c5b93d",
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  var hetecAuth = firebase.auth();
+  var hetecDb = firebase.firestore();
+  var hetecStorage = firebase.storage();
+
+  window.HeTecFirebase = {
+    auth: hetecAuth, db: hetecDb, storage: hetecStorage,
+    ready: new Promise(function (resolve) {
+      hetecAuth.onAuthStateChanged(function (user) {
+        if (user) resolve(user);
+        else hetecAuth.signInAnonymously().catch(function (e) { console.error('Anonyme Anmeldung fehlgeschlagen', e); });
+      });
+    }),
+  };
+</script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef } = React;
+
+function waitForFirebaseBridge() {
+  return new Promise((resolve) => {
+    if (window.HeTecFirebase) { resolve(window.HeTecFirebase); return; }
+    const iv = setInterval(() => {
+      if (window.HeTecFirebase) { clearInterval(iv); resolve(window.HeTecFirebase); }
+    }, 30);
+  });
+}
+
+// ---------- WebCrypto ----------
+async function importKeyFromBase64(b64) {
+  const raw = base64UrlToArrayBuffer(b64);
+  return crypto.subtle.importKey('raw', raw, 'AES-GCM', true, ['encrypt', 'decrypt']);
+}
+async function encryptBytes(key, plainBytes) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plainBytes);
+  const out = new Uint8Array(iv.length + cipher.byteLength);
+  out.set(iv, 0);
+  out.set(new Uint8Array(cipher), iv.length);
+  return out;
+}
+async function decryptBytes(key, combined) {
+  const iv = combined.slice(0, 12);
+  const cipher = combined.slice(12);
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, cipher);
+  return new Uint8Array(plain);
+}
+function base64UrlToArrayBuffer(b64url) {
+  let b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+  while (b64.length % 4) b64 += '=';
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+function dataUrlToUint8Array(dataUrl) {
+  const base64 = dataUrl.split(',')[1];
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+// ---------- Signaturposition: zuerst Textsuche, sonst Standardposition ----------
+async function findSignatureAnchor(pdfDoc) {
+  const anchorRe = /unterschrift/i;
+  for (let i = pdfDoc.numPages; i >= 1; i--) {
+    const page = await pdfDoc.getPage(i);
+    const content = await page.getTextContent();
+    for (const item of content.items) {
+      if (anchorRe.test(item.str)) {
+        return { pageIndex: i - 1, x: item.transform[4], y: item.transform[5] + 24 };
+      }
+    }
+  }
+  return null;
+}
+const DEFAULT_SIGNATURE_POSITION = { x: 320, y: 90 };
+
+async function embedSignature(pdfBytes, signaturePngDataUrl, anchor, meta) {
+  const pdfDoc = await PDFLib.PDFDocument.load(pdfBytes);
+  const pngBytes = dataUrlToUint8Array(signaturePngDataUrl);
+  const pngImage = await pdfDoc.embedPng(pngBytes);
+  const pages = pdfDoc.getPages();
+  const pageIndex = anchor ? Math.min(anchor.pageIndex, pages.length - 1) : pages.length - 1;
+  const page = pages[pageIndex];
+  const w = 160, h = 60;
+  const x = anchor ? Math.min(Math.max(anchor.x, 20), page.getWidth() - w - 20) : DEFAULT_SIGNATURE_POSITION.x;
+  const y = anchor ? anchor.y : DEFAULT_SIGNATURE_POSITION.y;
+  page.drawImage(pngImage, { x, y, width: w, height: h });
+
+  const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+  const stamp = `HETEC Sign · ${meta.timestamp} · Sitzung ${meta.shortId}`;
+  page.drawText(stamp, { x, y: Math.max(y - 12, 10), size: 7, font, color: PDFLib.rgb(0.36, 0.39, 0.45) });
+
+  return pdfDoc.save();
+}
+
+// ---------- UI-Bausteine ----------
+function TopBar() {
+  return <div className="topbar">HETEC <em>Sign</em></div>;
+}
+function CenterStatus({ text }) {
+  return <div className="full-center"><div className="spinner-lg"></div><p>{text}</p></div>;
+}
+function InvalidLinkScreen({ onDemo }) {
+  const onPick = (e) => { const f = e.target.files[0]; if (f) onDemo(f); };
+  return (
+    <div className="full-center">
+      <p className="eyebrow">Kein gültiger Link</p>
+      <h1>Diese Seite öffnet sich normalerweise per QR-Code</h1>
+      <p className="muted">Der QR-Code wird am Shop-PC angezeigt, sobald ein Vertrag zum Unterschreiben bereit ist.</p>
+      <label className="btn-primary file-btn">
+        Test: Beispiel-PDF laden
+        <input type="file" accept="application/pdf" onChange={onPick} />
+      </label>
+    </div>
+  );
+}
+function MessageScreen({ tone, title, msg, onReset }) {
+  return (
+    <div className="full-center">
+      <p className={"eyebrow " + (tone || '')}>{title}</p>
+      <h1>{msg}</h1>
+      <button className="btn-primary" onClick={onReset}>Zurück</button>
+    </div>
+  );
+}
+function DoneScreen({ demoMode, onReset }) {
+  return (
+    <div className="full-center">
+      <div className="check-mark" aria-hidden="true">
+        <svg viewBox="0 0 60 60"><path d="M12 32 L25 45 L48 15" /></svg>
+      </div>
+      <h1>Danke!</h1>
+      <p className="muted">{demoMode ? 'Test-PDF wurde heruntergeladen.' : 'Der Vertrag wurde unterschrieben und sicher übertragen.'}</p>
+      <button className="btn-ghost" onClick={onReset}>Fertig</button>
+    </div>
+  );
+}
+function ViewingScreen({ pdfDoc, fullyRead, onFullyRead, onSign }) {
+  return (
+    <div className="viewer-wrap">
+      <div className="progress-hint">
+        <span className={fullyRead ? 'done' : ''}>{fullyRead ? '✓ Vollständig gelesen' : 'Bitte den ganzen Vertrag durchlesen'}</span>
+      </div>
+      <PdfViewer pdfDoc={pdfDoc} onFullyRead={onFullyRead} />
+      <div className="viewer-footer">
+        <button className="btn-primary" disabled={!fullyRead} onClick={onSign}>
+          {fullyRead ? 'Vertrag unterschreiben' : 'Weiterlesen …'}
+        </button>
+      </div>
+    </div>
+  );
+}
+function PdfViewer({ pdfDoc, onFullyRead }) {
+  const containerRef = useRef(null);
+  const seenPages = useRef(new Set());
+  const numPages = pdfDoc.numPages;
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const canvases = Array.from(container.querySelectorAll('.pdf-page'));
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const idx = Number(entry.target.dataset.pageIndex);
+        if (entry.isIntersecting) {
+          renderPage(idx);
+          seenPages.current.add(idx);
+          if (seenPages.current.size >= numPages) onFullyRead();
+        }
+      });
+    }, { root: container, threshold: 0.5 });
+    canvases.forEach((c) => observer.observe(c));
+    return () => observer.disconnect();
+    // eslint-disable-next-line
+  }, []);
+
+  const renderPage = async (idx) => {
+    const canvas = containerRef.current.querySelector(`[data-page-index="${idx}"]`);
+    if (!canvas || canvas.dataset.rendered) return;
+    canvas.dataset.rendered = '1';
+    const page = await pdfDoc.getPage(idx + 1);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const containerWidth = containerRef.current.clientWidth - 32;
+    const baseViewport = page.getViewport({ scale: 1 });
+    const scale = (containerWidth / baseViewport.width) * dpr;
+    const viewport = page.getViewport({ scale });
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    canvas.style.width = (viewport.width / dpr) + 'px';
+    canvas.style.height = (viewport.height / dpr) + 'px';
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+  };
+
+  const pages = [];
+  for (let i = 0; i < numPages; i++) pages.push(i);
+
+  return (
+    <div className="pdf-scroll" ref={containerRef}>
+      {pages.map((i) => <canvas key={i} className="pdf-page" data-page-index={i}></canvas>)}
+    </div>
+  );
+}
+function SigningScreen({ onConfirm }) {
+  return (
+    <div className="full-center signing">
+      <p className="eyebrow">Unterschrift</p>
+      <h1>Bitte hier unterschreiben</h1>
+      <SignaturePad onConfirm={onConfirm} />
+    </div>
+  );
+}
+function SignaturePad({ onConfirm }) {
+  const canvasRef = useRef(null);
+  const drawing = useRef(false);
+  const hasStroke = useRef(false);
+  const lastPoint = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    canvas.getContext('2d').scale(dpr, dpr);
+  }, []);
+
+  const getPos = (e) => {
+    const rect = canvasRef.current.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+  const start = (e) => {
+    e.preventDefault(); drawing.current = true; lastPoint.current = getPos(e);
+    try { canvasRef.current.setPointerCapture(e.pointerId); } catch (err) {}
+  };
+  const move = (e) => {
+    if (!drawing.current) return;
+    e.preventDefault();
+    const ctx = canvasRef.current.getContext('2d');
+    const p = getPos(e);
+    ctx.strokeStyle = '#1B2430'; ctx.lineWidth = 2.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(lastPoint.current.x, lastPoint.current.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+    lastPoint.current = p; hasStroke.current = true;
+  };
+  const end = () => { drawing.current = false; };
+  const clear = () => {
+    const canvas = canvasRef.current;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.getContext('2d').clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+    hasStroke.current = false;
+  };
+  const confirm = () => {
+    if (!hasStroke.current) return;
+    onConfirm(canvasRef.current.toDataURL('image/png'));
+  };
+
+  return (
+    <div className="signature-pad">
+      <canvas ref={canvasRef} className="signature-canvas" onPointerDown={start} onPointerMove={move} onPointerUp={end} onPointerCancel={end}></canvas>
+      <p className="sig-caption">Mit Finger oder Stift unterschreiben</p>
+      <div className="sig-actions">
+        <button className="btn-ghost" onClick={clear}>Neu unterschreiben</button>
+        <button className="btn-primary" onClick={confirm}>Übernehmen</button>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Haupt-App ----------
+function App() {
+  const [phase, setPhase] = useState('loading');
+  const [sessionId, setSessionId] = useState(null);
+  const [demoMode, setDemoMode] = useState(false);
+  const [pdfDoc, setPdfDoc] = useState(null);
+  const [pdfBytes, setPdfBytes] = useState(null);
+  const [fullyRead, setFullyRead] = useState(false);
+  const [anchor, setAnchor] = useState(null);
+  const [errorMsg, setErrorMsg] = useState('');
+  const keyRef = useRef(null);
+
+  useEffect(() => { init(); }, []);
+
+  const init = async () => {
+    const hash = new URLSearchParams(location.hash.slice(1));
+    const s = hash.get('s');
+    const k = hash.get('k');
+    if (!s || !k) { setPhase('invalidLink'); return; }
+    setSessionId(s);
+    try {
+      const key = await importKeyFromBase64(k);
+      keyRef.current = key;
+      await claim(s, key);
+    } catch (e) {
+      console.error(e);
+      setErrorMsg('Link ungültig.');
+      setPhase('error');
+    }
+  };
+
+  const claim = async (s, key) => {
+    setPhase('claiming');
+    try {
+      const fb = await waitForFirebaseBridge();
+      await fb.ready;
+      const uid = fb.auth.currentUser.uid;
+      const refDoc = fb.db.collection('sessions').doc(s);
+      const snap = await refDoc.get();
+      if (!snap.exists) { setErrorMsg('Sitzung nicht gefunden.'); setPhase('claimFailed'); return; }
+      const data = snap.data();
+      if (Date.now() > data.expiresAt) { setErrorMsg('Sitzung ist abgelaufen.'); setPhase('claimFailed'); return; }
+      if (data.status !== 'pending') { setErrorMsg('Sitzung wurde bereits von einem anderen Gerät geöffnet.'); setPhase('claimFailed'); return; }
+      try {
+        await refDoc.update({ status: 'claimed', claimedBy: uid, claimedAt: Date.now() });
+      } catch (e2) {
+        setErrorMsg('Sitzung wurde gerade eben von einem anderen Gerät geöffnet.');
+        setPhase('claimFailed');
+        return;
+      }
+      await fetchAndDecrypt(s, key);
+    } catch (e) {
+      console.error(e);
+      setErrorMsg('Verbindung fehlgeschlagen. Firebase-Konfiguration prüfen (siehe SETUP.md).');
+      setPhase('error');
+    }
+  };
+
+  const fetchAndDecrypt = async (s, key) => {
+    setPhase('fetching');
+    try {
+      const fb = window.HeTecFirebase;
+      const url = await fb.storage.ref(`sessions/${s}/original.enc`).getDownloadURL();
+      const resp = await fetch(url);
+      const buf = await resp.arrayBuffer();
+      const decrypted = await decryptBytes(key, new Uint8Array(buf));
+      await loadPdf(decrypted);
+    } catch (e) {
+      console.error(e);
+      setErrorMsg('Vertrag konnte nicht geladen werden.');
+      setPhase('error');
+    }
+  };
+
+  const loadPdf = async (bytes) => {
+    setPdfBytes(bytes);
+    const doc = await window.pdfjsLib.getDocument({ data: bytes.slice() }).promise;
+    setPdfDoc(doc);
+    const foundAnchor = await findSignatureAnchor(doc);
+    setAnchor(foundAnchor);
+    setFullyRead(false);
+    setPhase('viewing');
+  };
+
+  const startDemo = async (file) => {
+    setDemoMode(true);
+    setPhase('fetching');
+    try {
+      const buf = await file.arrayBuffer();
+      await loadPdf(new Uint8Array(buf));
+    } catch (e) {
+      console.error(e);
+      setErrorMsg('PDF konnte nicht geladen werden.');
+      setPhase('error');
+    }
+  };
+
+  const handleSignatureConfirm = async (dataUrl) => {
+    setPhase('submitting');
+    try {
+      const signedBytes = await embedSignature(pdfBytes, dataUrl, anchor, {
+        timestamp: new Date().toLocaleString('de-DE'),
+        shortId: (sessionId || 'demo').slice(0, 8),
+      });
+      if (demoMode) {
+        const blob = new Blob([signedBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'signiert-testvertrag.pdf'; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        setPhase('done');
+        return;
+      }
+      const encryptedResult = await encryptBytes(keyRef.current, signedBytes);
+      const fb = window.HeTecFirebase;
+      await fb.storage.ref(`sessions/${sessionId}/result.enc`).put(encryptedResult);
+      await fb.db.collection('sessions').doc(sessionId).update({ status: 'completed', completedAt: Date.now() });
+      setPhase('done');
+    } catch (e) {
+      console.error(e);
+      setErrorMsg('Übertragung fehlgeschlagen.');
+      setPhase('error');
+    }
+  };
+
+  const reset = () => {
+    location.hash = '';
+    setPhase('invalidLink'); setSessionId(null); setDemoMode(false);
+    setPdfDoc(null); setPdfBytes(null); setFullyRead(false); setAnchor(null); setErrorMsg('');
+  };
+
+  return (
+    <div className="app-shell">
+      <TopBar />
+      <div className="app-body">
+        {phase === 'loading' && <CenterStatus text="Wird geladen…" />}
+        {phase === 'invalidLink' && <InvalidLinkScreen onDemo={startDemo} />}
+        {phase === 'claiming' && <CenterStatus text="Sitzung wird geöffnet…" />}
+        {phase === 'claimFailed' && <MessageScreen tone="warn" title="Nicht verfügbar" msg={errorMsg} onReset={reset} />}
+        {phase === 'fetching' && <CenterStatus text="Vertrag wird geladen…" />}
+        {phase === 'viewing' && pdfDoc && (
+          <ViewingScreen pdfDoc={pdfDoc} fullyRead={fullyRead} onFullyRead={() => setFullyRead(true)} onSign={() => setPhase('signing')} />
+        )}
+        {phase === 'signing' && <SigningScreen onConfirm={handleSignatureConfirm} />}
+        {phase === 'submitting' && <CenterStatus text="Wird übertragen…" />}
+        {phase === 'done' && <DoneScreen demoMode={demoMode} onReset={reset} />}
+        {phase === 'error' && <MessageScreen tone="warn" title="Fehler" msg={errorMsg} onReset={reset} />}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

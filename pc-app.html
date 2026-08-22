@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#1B2430" />
+<title>HETEC Sign</title>
+<link rel="manifest" href="./pc-app.webmanifest" />
+<style>
+  :root {
+    --ink-900: #1B2430;
+    --ink-700: #2C3A4A;
+    --paper-50: #FAFAF8;
+    --paper-100: #F0EFEA;
+    --paper-200: #E3E1D9;
+    --slate-500: #5B6472;
+    --slate-300: #9AA1AC;
+    --seal-600: #A32F1F;
+    --seal-700: #7E2417;
+    --confirm-600: #1F7A5C;
+    --warn-600: #B5791A;
+    --font-display: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "Cascadia Code", "SF Mono", Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: var(--font-display);
+    background: var(--ink-900);
+    color: var(--paper-50);
+    -webkit-font-smoothing: antialiased;
+  }
+  #root { min-height: 100vh; }
+  .app-shell { min-height: 100vh; display: flex; flex-direction: column; }
+  .app-header { padding: 20px 24px 8px; flex-shrink: 0; }
+  .wordmark { font-size: 20px; font-weight: 600; letter-spacing: 0.02em; }
+  .wordmark em { font-style: normal; color: var(--seal-600); }
+  .ink-underline { width: 90px; height: 8px; display: block; margin-top: 2px; }
+  .ink-underline path {
+    fill: none; stroke: var(--seal-600); stroke-width: 2; stroke-linecap: round;
+    stroke-dasharray: 160; stroke-dashoffset: 160;
+    animation: draw 900ms ease forwards 200ms;
+  }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  .stage {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    background: var(--paper-50); color: var(--ink-900);
+    border-radius: 20px 20px 0 0; padding: 32px 24px;
+  }
+  .screen { max-width: 360px; width: 100%; text-align: center; }
+  .eyebrow { font-family: var(--font-mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--slate-500); margin: 0 0 6px; }
+  .eyebrow.confirm { color: var(--confirm-600); }
+  .eyebrow.warn { color: var(--warn-600); }
+  h2 { margin: 0 0 8px; font-size: 22px; font-weight: 600; }
+  .muted { color: var(--slate-500); font-size: 14px; margin: 0 0 20px; }
+  .mono { font-family: var(--font-mono); }
+  .fineprint { font-size: 12px; margin-top: 16px; }
+  button, .file-btn {
+    font-family: inherit; font-size: 15px; font-weight: 600; border-radius: 10px;
+    padding: 13px 22px; border: none; cursor: pointer; display: block; width: 100%;
+    margin-bottom: 10px; transition: transform 80ms ease; position: relative;
+  }
+  button:active, .file-btn:active { transform: scale(0.98); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button:focus-visible, .file-btn:focus-visible { outline: 3px solid var(--seal-600); outline-offset: 2px; }
+  .btn-primary { background: var(--seal-600); color: var(--paper-50); }
+  .btn-primary:hover:not(:disabled) { background: var(--seal-700); }
+  .btn-secondary { background: var(--ink-900); color: var(--paper-50); }
+  .btn-ghost { background: transparent; color: var(--slate-500); border: 1px solid var(--paper-200); }
+  .btn-link { background: none; color: var(--seal-600); text-decoration: underline; font-weight: 500; padding: 6px; width: auto; margin: 0 auto; }
+  .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .qr { width: 220px; height: 220px; border-radius: 12px; border: 8px solid #fff; margin: 4px auto 20px; display: block; box-shadow: 0 4px 20px rgba(27,36,48,0.14); }
+  .pdf-preview { width: 100%; height: 260px; border: 1px solid var(--paper-200); border-radius: 10px; margin-bottom: 16px; background: #fff; }
+  .status { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--paper-200); border-top-color: var(--seal-600); animation: spin 800ms linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .status.pulse .spinner { animation: spin 800ms linear infinite, pulse 1600ms ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.45; } }
+  .idle .ink-mark { margin-bottom: 4px; }
+  .ink-svg { width: 140px; height: 30px; }
+  .ink-svg path { fill: none; stroke: var(--slate-300); stroke-width: 2.5; stroke-linecap: round; }
+  @media (prefers-reduced-motion: reduce) {
+    .ink-underline path, .spinner, .status.pulse .spinner { animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+  // Kleine, editierbare Konfiguration – z.B. per ?shop=Aalen aufrufbar (analog eurem
+  // bestehenden Multi-Shop-URL-Parameter-Muster).
+  window.HETEC_SHOP_ID = new URLSearchParams(location.search).get('shop') || 'unbekannt';
+  window.HETEC_TABLET_BASE_URL = 'https://hetec-it.github.io/HETEC-Sign/tablet-app.html';
+</script>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js"></script>
+
+<script>
+  // Bewusst alles klassisches Script (kein type="module"): ES-Module werden von
+  // Chrome/Edge blockiert, sobald die Datei per Doppelklick als file:// geöffnet
+  // wird - das war die Ursache für die leere Seite. So läuft die Datei per
+  // Doppelklick genauso wie später gehostet über GitHub Pages.
+  // Jeder Block einzeln try/catch-abgesichert: wenn eine externe Bibliothek
+  // (CDN, Adblocker, Firewall) mal nicht lädt, bleibt die App trotzdem
+  // sichtbar und bedienbar - nur die betroffene Funktion zeigt dann einen Fehler.
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    window.pdfjsLib = pdfjsLib;
+  } catch (e) {
+    console.error('pdf.js konnte nicht initialisiert werden:', e);
+  }
+
+  // TODO: eigenes Firebase-Projekt anlegen (siehe SETUP.md) und Config hier eintragen.
+  // Bewusst getrennt von o2-pencil-selling / pencil-selling-telekom, da hier auch
+  // anonyme, nicht von euch kontrollierte Kundengeräte (Tablets) Zugriff bekommen.
+  var firebaseConfig = {
+    apiKey: "AIzaSyDJ8fgvP272oRJjSYDbwEY-OXB2Tm_YYzs",
+    authDomain: "pdf-sign-ee773.firebaseapp.com",
+    projectId: "pdf-sign-ee773",
+    storageBucket: "pdf-sign-ee773.firebasestorage.app",
+    messagingSenderId: "293099302536",
+    appId: "1:293099302536:web:f0021fdf99c2dab9c5b93d",
+  };
+
+  window.HeTecFirebase = null;
+  try {
+    // Ab Firebase compat v12 auf der App-Instanz aufrufen, nicht mehr als
+    // bare firebase.auth()/.firestore() (das führte hier zum Absturz).
+    var hetecFirebaseApp = firebase.initializeApp(firebaseConfig);
+    var hetecAuth = hetecFirebaseApp.auth();
+    var hetecDb = hetecFirebaseApp.firestore();
+
+    window.HeTecFirebase = {
+      auth: hetecAuth, db: hetecDb,
+      ready: new Promise(function (resolve, reject) {
+        var settled = false;
+        var timeout = setTimeout(function () {
+          if (!settled) { settled = true; reject(new Error('Zeitüberschreitung bei der Anmeldung.')); }
+        }, 8000);
+        hetecAuth.onAuthStateChanged(function (user) {
+          if (user) {
+            if (!settled) { settled = true; clearTimeout(timeout); resolve(user); }
+          } else {
+            hetecAuth.signInAnonymously().catch(function (e) {
+              console.error('Anonyme Anmeldung fehlgeschlagen', e);
+              if (!settled) { settled = true; clearTimeout(timeout); reject(e); }
+            });
+          }
+        });
+      }),
+    };
+  } catch (e) {
+    console.error('Firebase-Setup fehlgeschlagen (Config/Projekt prüfen):', e);
+  }
+
+</script>
+
+<script>
+const {
+  useState,
+  useEffect,
+  useRef,
+  useCallback
+} = React;
+const SESSION_TTL_MINUTES = 45; // liegt im geforderten 30–60-Minuten-Fenster
+
+// ---------- Firebase-Bridge robust abwarten (Modul-Script vs. Babel-Script-Timing) ----------
+function waitForFirebaseBridge() {
+  return new Promise((resolve, reject) => {
+    if (window.HeTecFirebase) {
+      resolve(window.HeTecFirebase);
+      return;
+    }
+    const iv = setInterval(() => {
+      if (window.HeTecFirebase) {
+        clearInterval(iv);
+        clearTimeout(to);
+        resolve(window.HeTecFirebase);
+      }
+    }, 30);
+    const to = setTimeout(() => {
+      clearInterval(iv);
+      reject(new Error('Firebase ist nicht verfügbar (Config/Projekt prüfen).'));
+    }, 8000);
+  });
+}
+
+// ---------- WebCrypto: Ende-zu-Ende-Verschlüsselung (Schlüssel verlässt nie den Client) ----------
+async function generateKey() {
+  const key = await crypto.subtle.generateKey({
+    name: 'AES-GCM',
+    length: 256
+  }, true, ['encrypt', 'decrypt']);
+  const raw = await crypto.subtle.exportKey('raw', key);
+  return {
+    key,
+    base64: arrayBufferToBase64Url(raw)
+  };
+}
+async function importKeyFromBase64(b64) {
+  const raw = base64UrlToArrayBuffer(b64);
+  return crypto.subtle.importKey('raw', raw, 'AES-GCM', true, ['encrypt', 'decrypt']);
+}
+async function encryptBytes(key, plainBytes) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const cipher = await crypto.subtle.encrypt({
+    name: 'AES-GCM',
+    iv
+  }, key, plainBytes);
+  const out = new Uint8Array(iv.length + cipher.byteLength);
+  out.set(iv, 0);
+  out.set(new Uint8Array(cipher), iv.length);
+  return out;
+}
+async function decryptBytes(key, combined) {
+  const iv = combined.slice(0, 12);
+  const cipher = combined.slice(12);
+  const plain = await crypto.subtle.decrypt({
+    name: 'AES-GCM',
+    iv
+  }, key, cipher);
+  return new Uint8Array(plain);
+}
+function arrayBufferToBase64Url(buf) {
+  let binary = '';
+  const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function base64UrlToArrayBuffer(b64url) {
+  let b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+  while (b64.length % 4) b64 += '=';
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+// ---------- Lokale Vertragserkennung (läuft komplett on-device, nichts wird hochgeladen) ----------
+const CONTRACT_SIGNALS = [{
+  re: /unterschrift\s*(des)?\s*kunden?/i,
+  w: 6
+}, {
+  re: /mobilfunkvertrag/i,
+  w: 6
+}, {
+  re: /dsl[-\s]?vertrag/i,
+  w: 6
+}, {
+  re: /kaufvertrag/i,
+  w: 5
+}, {
+  re: /auftragsbestätigung/i,
+  w: 4
+}, {
+  re: /\bvertrag\b/i,
+  w: 2
+}, {
+  re: /\bauftrag\b/i,
+  w: 2
+}, {
+  re: /widerrufsrecht/i,
+  w: 3
+}, {
+  re: /vertragspartner/i,
+  w: 3
+}, {
+  re: /ort,?\s*datum,?\s*unterschrift/i,
+  w: 5
+}, {
+  re: /einwilligungserklärung/i,
+  w: 2
+}];
+const FILENAME_SIGNALS = [/vertrag/i, /auftrag/i, /contract/i, /kauf/i];
+const CONTRACT_THRESHOLD = 6;
+async function detectContract(file, pdfjsLib) {
+  let score = 0;
+  if (FILENAME_SIGNALS.some(re => re.test(file.name))) score += 3;
+  const buf = await file.arrayBuffer();
+  const pdfBytes = new Uint8Array(buf);
+  const pdf = await pdfjsLib.getDocument({
+    data: pdfBytes.slice()
+  }).promise;
+  const pagesToScan = Math.min(pdf.numPages, 4);
+  let text = '';
+  for (let p = 1; p <= pagesToScan; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    text += ' ' + content.items.map(i => i.str).join(' ');
+  }
+  for (const s of CONTRACT_SIGNALS) if (s.re.test(text)) score += s.w;
+  return {
+    isContract: score >= CONTRACT_THRESHOLD,
+    score,
+    pageCount: pdf.numPages,
+    pdfBytes
+  };
+}
+
+// ---------- UI-Bausteine ----------
+function Header() {
+  return /*#__PURE__*/React.createElement("header", {
+    className: "app-header"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "wordmark"
+  }, "HETEC ", /*#__PURE__*/React.createElement("em", null, "Sign")), /*#__PURE__*/React.createElement("svg", {
+    className: "ink-underline",
+    viewBox: "0 0 140 10"
+  }, /*#__PURE__*/React.createElement("path", {
+    d: "M2 6 C 30 2, 60 9, 90 4 S 130 2, 138 6"
+  })));
+}
+function IdleScreen({
+  onPick
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "screen idle"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "ink-mark",
+    "aria-hidden": "true"
+  }, /*#__PURE__*/React.createElement("svg", {
+    viewBox: "0 0 200 40",
+    className: "ink-svg"
+  }, /*#__PURE__*/React.createElement("path", {
+    d: "M2 30 C 40 5, 70 38, 100 20 S 160 5, 198 22"
+  }))), /*#__PURE__*/React.createElement("h2", null, "Bereit"), /*#__PURE__*/React.createElement("p", {
+    className: "muted"
+  }, "Ein Vertrag wird automatisch erkannt, sobald die PDF geöffnet wird."), /*#__PURE__*/React.createElement("label", {
+    className: "btn-primary file-btn"
+  }, "PDF manuell öffnen (Test)", /*#__PURE__*/React.createElement("input", {
+    type: "file",
+    accept: "application/pdf",
+    onChange: onPick
+  })));
+}
+function StatusScreen({
+  text,
+  pulse
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "screen status" + (pulse ? " pulse" : "")
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "spinner"
+  }), /*#__PURE__*/React.createElement("p", null, text));
+}
+function NotContractScreen({
+  fileInfo,
+  onReset,
+  onForceContract
+}) {
+  const [blobUrl, setBlobUrl] = useState(null);
+  useEffect(() => {
+    if (!fileInfo || !fileInfo.pdfBytes) return;
+    const blob = new Blob([fileInfo.pdfBytes], {
+      type: 'application/pdf'
+    });
+    const url = URL.createObjectURL(blob);
+    setBlobUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [fileInfo]);
+  return /*#__PURE__*/React.createElement("div", {
+    className: "screen"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "eyebrow"
+  }, "Normales Dokument"), /*#__PURE__*/React.createElement("h2", null, fileInfo ? fileInfo.name : ''), /*#__PURE__*/React.createElement("p", {
+    className: "muted"
+  }, "Kein Vertrag erkannt – wird nur angezeigt."), blobUrl && /*#__PURE__*/React.createElement("iframe", {
+    className: "pdf-preview",
+    src: blobUrl,
+    title: "PDF-Vorschau"
+  }), /*#__PURE__*/React.createElement("button", {
+    className: "btn-ghost",
+    onClick: onReset
+  }, "Neues Dokument"), /*#__PURE__*/React.createElement("button", {
+    className: "btn-link",
+    onClick: onForceContract
+  }, "Doch ein Vertrag? Trotzdem auf Tablet öffnen"));
+}
+function ContractReadyScreen({
+  fileInfo,
+  onStart,
+  onReset
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "screen"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "eyebrow"
+  }, "Vertrag erkannt"), /*#__PURE__*/React.createElement("h2", null, fileInfo ? fileInfo.name : ''), /*#__PURE__*/React.createElement("p", {
+    className: "muted"
+  }, fileInfo && fileInfo.pageCount ? fileInfo.pageCount + ' Seiten' : ''), /*#__PURE__*/React.createElement("button", {
+    className: "btn-primary",
+    onClick: onStart
+  }, "Auf Tablet öffnen"), /*#__PURE__*/React.createElement("button", {
+    className: "btn-ghost",
+    onClick: onReset
+  }, "Abbrechen"));
+}
+function QrScreen({
+  qrDataUrl,
+  expiresAt
+}) {
+  const [remaining, setRemaining] = useState(0);
+  useEffect(() => {
+    const tick = () => setRemaining(Math.max(0, Math.floor((expiresAt - Date.now()) / 1000)));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+  const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
+  const ss = String(remaining % 60).padStart(2, '0');
+  return /*#__PURE__*/React.createElement("div", {
+    className: "screen"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "eyebrow"
+  }, "Bereit zum Scannen"), /*#__PURE__*/React.createElement("h2", null, "QR-Code auf dem Kundentablet scannen"), qrDataUrl && /*#__PURE__*/React.createElement("img", {
+    className: "qr",
+    src: qrDataUrl,
+    alt: "QR-Code für Tablet"
+  }), /*#__PURE__*/React.createElement("p", {
+    className: "mono muted"
+  }, "Gültig noch ", mm, ":", ss));
+}
+function CompletedScreen({
+  onPrint,
+  onEmail
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "screen"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "eyebrow confirm"
+  }, "Unterschrieben"), /*#__PURE__*/React.createElement("h2", null, "Fertig – wie weiter?"), /*#__PURE__*/React.createElement("button", {
+    className: "btn-primary",
+    onClick: onPrint
+  }, "Drucken"), /*#__PURE__*/React.createElement("button", {
+    className: "btn-secondary",
+    onClick: onEmail
+  }, "Per E-Mail senden"), /*#__PURE__*/React.createElement("p", {
+    className: "fineprint muted"
+  }, "Nach Auswahl werden alle Daten dieser Sitzung sofort gelöscht."));
+}
+function DoneScreen({
+  onReset
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "screen"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "eyebrow confirm"
+  }, "Abgeschlossen"), /*#__PURE__*/React.createElement("h2", null, "Alle Sitzungsdaten gelöscht"), /*#__PURE__*/React.createElement("button", {
+    className: "btn-primary",
+    onClick: onReset
+  }, "Nächster Kunde"));
+}
+function ExpiredScreen({
+  onReset
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "screen"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "eyebrow warn"
+  }, "Abgelaufen"), /*#__PURE__*/React.createElement("h2", null, "Sitzung wurde beendet oder ist abgelaufen"), /*#__PURE__*/React.createElement("button", {
+    className: "btn-primary",
+    onClick: onReset
+  }, "Neu starten"));
+}
+function ErrorScreen({
+  msg,
+  onReset
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "screen"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "eyebrow warn"
+  }, "Fehler"), /*#__PURE__*/React.createElement("h2", null, msg || 'Etwas ist schiefgelaufen.'), /*#__PURE__*/React.createElement("button", {
+    className: "btn-primary",
+    onClick: onReset
+  }, "Neu starten"));
+}
+
+// ---------- Haupt-App ----------
+function App() {
+  const [phase, setPhase] = useState('idle');
+  const [fileInfo, setFileInfo] = useState(null);
+  const [session, setSession] = useState(null);
+  const [qrDataUrl, setQrDataUrl] = useState(null);
+  const [resultBytes, setResultBytes] = useState(null);
+  const [errorMsg, setErrorMsg] = useState('');
+  const unsubRef = useRef(null);
+  const claimedNotified = useRef(false);
+  useEffect(() => {
+    if ('launchQueue' in window) {
+      window.launchQueue.setConsumer(async launchParams => {
+        if (!launchParams.files || !launchParams.files.length) return;
+        const fh = launchParams.files[0];
+        const file = await fh.getFile();
+        handleIncomingFile(file);
+      });
+    }
+    return () => {
+      if (unsubRef.current) unsubRef.current();
+    };
+  }, []);
+  const handleIncomingFile = useCallback(async file => {
+    setPhase('analyzing');
+    setErrorMsg('');
+    try {
+      const result = await detectContract(file, window.pdfjsLib);
+      setFileInfo({
+        name: file.name,
+        pdfBytes: result.pdfBytes,
+        score: result.score,
+        pageCount: result.pageCount
+      });
+      setPhase(result.isContract ? 'contractReady' : 'notContract');
+    } catch (e) {
+      console.error(e);
+      setErrorMsg('PDF konnte nicht gelesen werden.');
+      setPhase('error');
+    }
+  }, []);
+  const onPickFile = e => {
+    const file = e.target.files[0];
+    if (file) handleIncomingFile(file);
+  };
+  const startSession = async () => {
+    setPhase('creatingSession');
+    try {
+      const fb = await waitForFirebaseBridge();
+      await fb.ready;
+      const user = fb.auth.currentUser;
+      const {
+        key,
+        base64
+      } = await generateKey();
+      const encrypted = await encryptBytes(key, fileInfo.pdfBytes);
+      const blobData = arrayBufferToBase64Url(encrypted.buffer);
+      if (blobData.length > 900000) {
+        throw new Error('PDF ist zu groß für die Übertragung (max. ca. 700 KB).');
+      }
+      const sessionId = crypto.randomUUID();
+      const now = Date.now();
+      const expiresAt = now + SESSION_TTL_MINUTES * 60 * 1000;
+
+      // Alles in EINEM Firestore-Dokument (auch die verschlüsselte PDF als
+      // base64-Feld) - kein Cloud Storage, kein Blaze-Tarif nötig.
+      await fb.db.collection('sessions').doc(sessionId).set({
+        status: 'pending',
+        pcUid: user.uid,
+        shopId: window.HETEC_SHOP_ID,
+        createdAt: now,
+        expiresAt,
+        fileName: fileInfo.name,
+        blobData
+      });
+      const tabletUrl = `${window.HETEC_TABLET_BASE_URL}#s=${sessionId}&k=${base64}`;
+      const canvas = document.createElement('canvas');
+      await window.QRCode.toCanvas(canvas, tabletUrl, {
+        width: 320,
+        margin: 1,
+        color: {
+          dark: '#1B2430',
+          light: '#FAFAF8'
+        }
+      });
+      setQrDataUrl(canvas.toDataURL());
+      claimedNotified.current = false;
+      setSession({
+        id: sessionId,
+        key,
+        expiresAt
+      });
+      setPhase('sessionOpen');
+      listenToSession(sessionId, key);
+    } catch (e) {
+      console.error(e);
+      var msg = 'Sitzung konnte nicht erstellt werden.';
+      if (e && e.message && e.message.indexOf('groß') !== -1) msg = e.message;
+      else if (e && e.code === 'permission-denied') msg = 'Firestore-Regeln lassen das nicht zu – bitte firestore.rules (mit blobData) in der Firebase Console unter Firestore → Rules erneut einfügen und veröffentlichen.';
+      else if (e && e.code) msg = 'Sitzung konnte nicht erstellt werden (' + e.code + ').';
+      setErrorMsg(msg);
+      setPhase('error');
+    }
+  };
+  const listenToSession = (sessionId, key) => {
+    const fb = window.HeTecFirebase;
+    const sessionRef = fb.db.collection('sessions').doc(sessionId);
+    unsubRef.current = sessionRef.onSnapshot(async snap => {
+      if (!snap.exists) {
+        setPhase('expired');
+        return;
+      }
+      const data = snap.data();
+      if (data.status === 'claimed' && !claimedNotified.current) {
+        claimedNotified.current = true;
+        setPhase('claimed');
+      }
+      if (data.status === 'completed') {
+        try {
+          const buf = base64UrlToArrayBuffer(data.blobData);
+          const decrypted = await decryptBytes(key, new Uint8Array(buf));
+          setResultBytes(decrypted);
+          setPhase('completed');
+          document.title = '✓ Unterschrieben – HETEC Sign';
+        } catch (e) {
+          console.error(e);
+          setErrorMsg('Ergebnis konnte nicht entschlüsselt werden.');
+          setPhase('error');
+        }
+      }
+    });
+  };
+  const finishAndCleanup = async () => {
+    const fb = window.HeTecFirebase;
+    try {
+      await fb.db.collection('sessions').doc(session.id).delete();
+    } catch (e) {
+      console.error('Cleanup-Fehler', e);
+    }
+    if (unsubRef.current) unsubRef.current();
+    document.title = 'HETEC Sign';
+    setPhase('done');
+  };
+  const handlePrint = () => {
+    const blob = new Blob([resultBytes], {
+      type: 'application/pdf'
+    });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url);
+    if (win) win.onload = () => win.print();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    finishAndCleanup();
+  };
+  const handleEmail = () => {
+    const blob = new Blob([resultBytes], {
+      type: 'application/pdf'
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `signiert-${fileInfo.name}`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    window.location.href = 'mailto:?subject=' + encodeURIComponent('Unterschriebener Vertrag') + '&body=' + encodeURIComponent('Die unterschriebene PDF wurde soeben heruntergeladen – bitte hier anhängen.');
+    finishAndCleanup();
+  };
+  const forceContract = () => setPhase('contractReady');
+  const reset = () => {
+    document.title = 'HETEC Sign';
+    setPhase('idle');
+    setFileInfo(null);
+    setSession(null);
+    setQrDataUrl(null);
+    setResultBytes(null);
+    setErrorMsg('');
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: "app-shell"
+  }, /*#__PURE__*/React.createElement(Header, null), /*#__PURE__*/React.createElement("main", {
+    className: "stage"
+  }, phase === 'idle' && /*#__PURE__*/React.createElement(IdleScreen, {
+    onPick: onPickFile
+  }), phase === 'analyzing' && /*#__PURE__*/React.createElement(StatusScreen, {
+    text: "Dokument wird geprüft…"
+  }), phase === 'notContract' && /*#__PURE__*/React.createElement(NotContractScreen, {
+    fileInfo: fileInfo,
+    onReset: reset,
+    onForceContract: forceContract
+  }), phase === 'contractReady' && /*#__PURE__*/React.createElement(ContractReadyScreen, {
+    fileInfo: fileInfo,
+    onStart: startSession,
+    onReset: reset
+  }), phase === 'creatingSession' && /*#__PURE__*/React.createElement(StatusScreen, {
+    text: "Sitzung wird vorbereitet…"
+  }), phase === 'sessionOpen' && /*#__PURE__*/React.createElement(QrScreen, {
+    qrDataUrl: qrDataUrl,
+    expiresAt: session ? session.expiresAt : Date.now()
+  }), phase === 'claimed' && /*#__PURE__*/React.createElement(StatusScreen, {
+    text: "Kunde liest den Vertrag auf dem Tablet…",
+    pulse: true
+  }), phase === 'completed' && /*#__PURE__*/React.createElement(CompletedScreen, {
+    onPrint: handlePrint,
+    onEmail: handleEmail
+  }), phase === 'done' && /*#__PURE__*/React.createElement(DoneScreen, {
+    onReset: reset
+  }), phase === 'expired' && /*#__PURE__*/React.createElement(ExpiredScreen, {
+    onReset: reset
+  }), phase === 'error' && /*#__PURE__*/React.createElement(ErrorScreen, {
+    msg: errorMsg,
+    onReset: reset
+  })));
+}
+ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(App, null));</script>
+</body>
+</html>

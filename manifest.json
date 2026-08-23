@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "HETEC Sign Connector",
+  "version": "1.0.0",
+  "description": "Erkennt heruntergeladene Vertrags-PDFs automatisch und übergibt sie an HETEC Sign.",
+  "permissions": ["downloads", "scripting", "tabs", "notifications", "webRequest"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "HETEC Sign Connector"
+  },
+  "icons": {
+    "16": "icon-16.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
+  }
+}
